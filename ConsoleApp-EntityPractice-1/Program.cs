@@ -1,109 +1,141 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
 
 namespace ConsoleApp_EntityPractice_1
 {
+
+    public class Company
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+
+        public int CountryId { get; set; }
+        public Country Country { get; set; }
+        public List<User> Users { get; set; }
+    }
+    // должность пользователя
+    public class Position
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public List<User> Users { get; set; }
+    }
     public class User
     {
         public int Id { get; set; }
         public string Name { get; set; }
-        public int Age { get; set; }
+
+        public int? CompanyId { get; set; }
+        public Company Company { get; set; }
+        public int? PositionId { get; set; }
+        public Position Position { get; set; }
+    }
+    // страна компании
+    public class Country
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public int CapitalId { get; set; }
+        public City Capital { get; set; }  // столица страны
+        public List<Company> Companies { get; set; }
+    }
+    // столица страны
+    public class City
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
     }
 
     public class ApplicationContext : DbContext
     {
+        public DbSet<Company> Companies { get; set; }
         public DbSet<User> Users { get; set; }
-
+        public DbSet<City> Cities { get; set; }
+        public DbSet<Country> Countries { get; set; }
+        public DbSet<Position> Positions { get; set; }
         public ApplicationContext()
         {
+            Database.EnsureDeleted();
             Database.EnsureCreated();
         }
-
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseSqlServer("Server=localhost\\SQLEXPRESS;Database=helloappdb;Trusted_Connection=True");
+            optionsBuilder.UseSqlServer("Server=localhost\\SQLEXPRESS;Database=newcompaniesdb;Trusted_Connection=True");
         }
 
-        //public ApplicationContext(DbContextOptions<ApplicationContext> options)
-        //    : base(options)
+        //protected override void OnModelCreating(ModelBuilder modelBuilder)
         //{
-        //    Database.EnsureCreated();
+        //    modelBuilder.Entity<User>()
+        //        .HasOne(p => p.Company)
+        //        .WithMany(t => t.Users)
+        //        .OnDelete(DeleteBehavior.Cascade);
         //}
+
     }
 
     internal class Program
     {
         private static void Main(string[] args)
         {
-
-            //var optionsBuilder = new DbContextOptionsBuilder<ApplicationContext>();
-
-            //var options = optionsBuilder
-            //    .UseSqlServer(@"Server=(localdb)\mssqllocaldb;Database=helloappdb;Trusted_Connection=True;")
-            //    .Options;
-
-            //using (ApplicationContext db = new ApplicationContext(options))
-            using (ApplicationContext db = new ApplicationContext())
+            using (var db = new ApplicationContext())
             {
-                User user1 = new User {Name = "Tom", Age = 33};
-                User user2 = new User {Name = "Alice", Age = 26};
+                Position manager = new Position { Name = "Manager" };
+                Position developer = new Position { Name = "Developer" };
+                db.Positions.AddRange(manager, developer);
 
-                db.Users.Add(user1);
-                db.Users.Add(user2);
+                City washington = new City { Name = "Washington" };
+                db.Cities.Add(washington);
+
+                Country usa = new Country { Name = "USA", Capital = washington };
+                db.Countries.Add(usa);
+
+                Company microsoft = new Company { Name = "Microsoft", Country = usa };
+                Company google = new Company { Name = "Google", Country = usa };
+                db.Companies.AddRange(microsoft, google);
                 db.SaveChanges();
-            }
+                User tom = new User { Name = "Tom", Company = microsoft, Position = manager };
+                User bob = new User { Name = "Bob", Company = google, Position = developer };
+                User alice = new User { Name = "Alice", Company = microsoft, Position = developer };
+                User kate = new User { Name = "Kate", Company = google, Position = manager };
+                db.Users.AddRange(tom, bob, alice, kate);
+                db.SaveChanges();
 
-            using (ApplicationContext db = new ApplicationContext())
-            {
-                var users = db.Users.ToList();
-                foreach (User u in users)
-                {
-                    Console.WriteLine($"{u.Id}.{u.Name} - {u.Age}");
-                }
-            }
 
-            using (ApplicationContext db = new ApplicationContext())
-            {
-                // получаем первый объект
+                ////Eager loading
+                //// получаем пользователей
+                //var users = db.Users
+                //    .Include(u => u.Company)  // добавляем данные по компаниям
+                //    .ThenInclude(comp => comp.Country)      // к компании добавляем страну 
+                //    .ThenInclude(count => count.Capital)    // к стране добавляем столицу
+                //    .Include(u => u.Position) // добавляем данные по должностям
+                //    .ToList();
+                //foreach (var user in users)
+                //{
+                //    Console.WriteLine($"{user.Name} - {user.Position.Name}");
+                //    Console.WriteLine($"{user.Company?.Name} - {user.Company?.Country.Name} - {user.Company?.Country.Capital.Name}");
+                //    Console.WriteLine("----------------------");     // для красоты
+                //}
+
+                //Explicit loading
+                Company company = db.Companies.FirstOrDefault();
+                db.Users.Where(p => p.CompanyId == company.Id).Load();
+
+                Console.WriteLine($"Company: {company.Name}");
+                foreach (var p in company.Users)
+                    Console.WriteLine($"User: {p.Name}");
+
+                db.Entry(company).Collection(t => t.Users).Load();
+
+                Console.WriteLine($"Company: {company.Name}");
+                foreach (var p in company.Users)
+                    Console.WriteLine($"User: {p.Name}");
+
                 User user = db.Users.FirstOrDefault();
-                if (user != null)
-                {
-                    user.Name = "Bob";
-                    user.Age = 1;
-                    //обновляем объект
-                    //db.Users.Update(user);
-                    db.SaveChanges();
-                }
-
-                // выводим данные после обновления
-                Console.WriteLine("\nДанные после редактирования:");
-                var users = db.Users.ToList();
-                foreach (User u in users)
-                {
-                    Console.WriteLine($"{u.Id}.{u.Name} - {u.Age}");
-                }
-
-            }
-
-            using (ApplicationContext db = new ApplicationContext())
-            {
-                // получаем первый объект
-                User user = db.Users.FirstOrDefault();
-                if (user != null)
-                {
-                    //удаляем объект
-                    db.Users.Remove(user);
-                    db.SaveChanges();
-                }
-
-                // выводим данные после обновления
-                Console.WriteLine("\nДанные после удаления:");
-                var users = db.Users.ToList();
-                foreach (User u in users)
-                {
-                    Console.WriteLine($"{u.Id}.{u.Name} - {u.Age}");
-                }
+                db.Entry(user).Reference(x => x.Company).Load();
+                Console.WriteLine($"{user.Name} - {user?.Company.Name}");
             }
         }
     }
